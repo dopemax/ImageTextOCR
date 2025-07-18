@@ -1,0 +1,29 @@
+{
+  "name": "ImageTextOCR",
+  "version": "0.0.1",
+  "summary": "A lightweight and pure Swift implemented library for ImageTextOCR.",
+  "description": "A lightweight and pure Swift implemented library for ImageTextOCR.",
+  "homepage": "https://github.com/dopemax/ImageTextOCR",
+  "license": {
+    "type": "MIT",
+    "file": "LICENSE"
+  },
+  "authors": {
+    "dopemax": "1003990034@qq.com"
+  },
+  "source": {
+    "git": "https://github.com/dopemax/ImageTextOCR.git",
+    "tag": "0.0.1"
+  },
+  "swift_versions": [
+    "5.0"
+  ],
+  "platforms": {
+    "ios": "15.0"
+  },
+  "source_files": "ImageTextOCR/Classes/**/*",
+  "dependencies": {
+    "Alamofire": []
+  },
+  "swift_version": "5.0"
+}

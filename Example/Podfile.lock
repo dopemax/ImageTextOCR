@@ -1,0 +1,23 @@
+PODS:
+  - Alamofire (5.10.2)
+  - ImageTextOCR (0.0.1):
+    - Alamofire
+
+DEPENDENCIES:
+  - ImageTextOCR (from `../`)
+
+SPEC REPOS:
+  trunk:
+    - Alamofire
+
+EXTERNAL SOURCES:
+  ImageTextOCR:
+    :path: "../"
+
+SPEC CHECKSUMS:
+  Alamofire: 7193b3b92c74a07f85569e1a6c4f4237291e7496
+  ImageTextOCR: c01c252022da53e0724b3410cad74b463e291c50
+
+PODFILE CHECKSUM: aab78692330b4589cd8df75fedb9960b571e6a0b
+
+COCOAPODS: 1.16.2

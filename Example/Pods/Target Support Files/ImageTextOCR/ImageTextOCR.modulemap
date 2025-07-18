@@ -1,0 +1,6 @@
+framework module ImageTextOCR {
+  umbrella header "ImageTextOCR-umbrella.h"
+
+  export *
+  module * { export * }
+}

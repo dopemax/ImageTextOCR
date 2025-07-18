@@ -1,0 +1,6 @@
+framework module Pods_ImageTextOCR_Example {
+  umbrella header "Pods-ImageTextOCR_Example-umbrella.h"
+
+  export *
+  module * { export * }
+}
