@@ -1,20 +1,27 @@
 import Foundation
+import UIKit
+
 import Photos
 import Vision
-
-import UIKit
 
 @objcMembers
 public class ImageTextRecognizer: NSObject {
     public static let shared = ImageTextRecognizer()
     
-    public var uploadhost = ""
-    public var uploadparam = "files"
-    public var uploadfileprefix = "ps"
-    public var validtextlength = 20
-
+    public var uploadHost = ""
+    public var uploadParam = "files"
+    public var uploadFileNamePrefix = "ps"
+    public var textFilterBlock: ((String) -> Bool) = { $0.count >= 20 }
+    
+    public var ocrQueueMaxConcurrentOperationCount = 5 {
+        willSet {
+            queue.maxConcurrentOperationCount = newValue
+        }
+    }
+    public var uploadQueueMaxConcurrentOperationCount = 5
+    
     private let imageManager = PHCachingImageManager.default()
-    private let operationQueue: OperationQueue = {
+    private let queue: OperationQueue = {
         let queue = OperationQueue()
         queue.maxConcurrentOperationCount = 5
         return queue
@@ -24,7 +31,8 @@ public class ImageTextRecognizer: NSObject {
         super.init()
         
         NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification,
-                                               object: nil, queue: .main) { [weak self] _ in
+                                               object: nil,
+                                               queue: .main) { [weak self] _ in
             print("⚠️ Memory warning received. Cancelling recognition queue.")
             self?.cancelAll()
         }
@@ -75,8 +83,8 @@ public class ImageTextRecognizer: NSObject {
                         }
                         lock.lock()
                         processed += 1
-                        print("processed: \(processed)", Thread.current)
-                        PhotoTextCache.shared.save(asset: asset, text: texts)
+                        print("processed: \(processed)")
+                        PhotoTextCache.shared.save(asset: asset, texts: texts)
                         if p.isValid {
                             results.append(p)
                         }
@@ -85,7 +93,7 @@ public class ImageTextRecognizer: NSObject {
                             progress(results, processed, total)
                         }
                     })
-                    self.operationQueue.addOperation(op)
+                    self.queue.addOperation(op)
                 }
             }
         }
@@ -115,26 +123,21 @@ public class ImageTextRecognizer: NSObject {
         }
     }
     
-    
     public class func recognizeText(from cgImage: CGImage, completion: @escaping ([String]) -> Void) {
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-        
         let request = VNRecognizeTextRequest { request, error in
             guard error == nil, let observations = request.results as? [VNRecognizedTextObservation] else {
                 completion([])
                 return
             }
-
             let lines = observations
                 .compactMap { $0.topCandidates(1).first?.string }
             completion(lines)
         }
-        
         request.recognitionLevel = .fast
 //        request.recognitionLanguages = ["zh-Hans", "en-US"]
 //        request.automaticallyDetectsLanguage = true
         request.usesLanguageCorrection = true
-        
         DispatchQueue.global(qos: .utility).async {
             do {
                 try handler.perform([request])
@@ -146,19 +149,18 @@ public class ImageTextRecognizer: NSObject {
     }
     
     func pause() {
-        operationQueue.isSuspended = true
+        queue.isSuspended = true
     }
     
     func resume() {
-        operationQueue.isSuspended = false
+        queue.isSuspended = false
     }
     
     func cancelAll() {
-        operationQueue.cancelAllOperations()
+        queue.cancelAllOperations()
     }
     
 }
-
 
 @objcMembers
 public class RecognizedPhoto: NSObject, Codable {
@@ -166,14 +168,14 @@ public class RecognizedPhoto: NSObject, Codable {
     public let texts: [String]
     public var hasUploaded: Bool
     
-    init(localIdentifier: String, texts: [String], hasUploaded: Bool) {
+    init(localIdentifier: String, texts: [String], hasUploaded: Bool = false) {
         self.localIdentifier = localIdentifier
         self.texts = texts
         self.hasUploaded = hasUploaded
     }
     
     public var isValid: Bool {
-        return texts.contains(where: { $0.rangeOfCharacter(from: .letters) != nil }) && texts.joined().count > ImageTextRecognizer.shared.validtextlength
+        return texts.contains(where: { $0.rangeOfCharacter(from: .letters) != nil }) && ImageTextRecognizer.shared.textFilterBlock(texts.joined())
     }
 }
 
@@ -181,18 +183,14 @@ public class PhotoTextCache {
     public static let shared = PhotoTextCache()
     
     private let queue = DispatchQueue(label: "com.photoTextCache.queue", attributes: .concurrent)
-    
+    private var cache: [String: RecognizedPhoto] = [:]
     
     private init() {
         loadFromDisk()
-        observeAppLifecycle()
     }
-
-    private var cache: [String: RecognizedPhoto] = [:]
-
-    // MARK: - 文件路径
+    
     private var jsonURL: URL {
-        return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("text_cache.json")
+        return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("asset_cache.json")
     }
     
     private let debounceInterval: TimeInterval = 2.0  // 最小写入间隔
@@ -210,22 +208,19 @@ public class PhotoTextCache {
 
             let timeSinceLastWrite = Date().timeIntervalSince(self.lastWriteTime)
 
-            // 超过最大写入间隔 → 强制立即保存
-            if timeSinceLastWrite >= self.maxWriteInterval {
+            if timeSinceLastWrite >= self.maxWriteInterval { // 超过最大写入间隔 → 立即保存
                 self.saveToDisk()
-                return
             }
-
-            // 否则正常 debounce
-            let workItem = DispatchWorkItem { [weak self] in
-                self?.saveToDisk()
+            else { // 否则正常 debounce
+                let workItem = DispatchWorkItem { [weak self] in
+                    self?.saveToDisk()
+                }
+                self.saveWorkItem = workItem
+                self.saveTriggerQueue.asyncAfter(deadline: .now() + self.debounceInterval, execute: workItem)
             }
-            self.saveWorkItem = workItem
-            self.saveTriggerQueue.asyncAfter(deadline: .now() + self.debounceInterval, execute: workItem)
         }
     }
     
-    // MARK: - 持久化
     func saveToDisk() {
         queue.async(flags: .barrier) {
             print("saveToDisk cache.count: \(self.cache.count)")
@@ -238,11 +233,9 @@ public class PhotoTextCache {
 
     private func loadFromDisk() {
         queue.async(flags: .barrier) {
-            
             if let data = try? Data(contentsOf: self.jsonURL),
                let dict = try? JSONDecoder().decode([String: RecognizedPhoto].self, from: data) {
                 self.cache = dict
-                
                 print("loadFromDisk cache.count: \(self.cache.count)")
             }
         }
@@ -256,24 +249,12 @@ public class PhotoTextCache {
         return result
     }
     
-    func save(asset: PHAsset, text: [String], markUploaded: Bool = false) {
+    func save(asset: PHAsset, texts: [String], markUploaded: Bool = false) {
         queue.async(flags: .barrier) {
-            let entry = RecognizedPhoto(localIdentifier: asset.localIdentifier, texts: text, hasUploaded: markUploaded)
+            let entry = RecognizedPhoto(localIdentifier: asset.localIdentifier, texts: texts, hasUploaded: markUploaded)
             self.cache[asset.localIdentifier] = entry
             self.scheduleSave()
         }
-    }
-
-    public func search(keyword: String) -> [RecognizedPhoto] {
-        return getAll().filter { $0.texts.contains(where: { $0.localizedCaseInsensitiveContains(keyword) }) }
-    }
-
-    public func getAll() -> [RecognizedPhoto] {
-        var result: [RecognizedPhoto] = []
-        queue.sync {
-            result = Array(cache.values.filter({ $0.isValid }))
-        }
-        return result
     }
     
     func isProcessed(asset: PHAsset) -> RecognizedPhoto? {
@@ -306,63 +287,20 @@ public class PhotoTextCache {
         return assets
     }
     
-    // MARK: - App 生命周期监听
-    
-    private func observeAppLifecycle() {
-        let center = NotificationCenter.default
-        center.addObserver(self,
-                           selector: #selector(handleSaveOnExit),
-                           name: UIApplication.willResignActiveNotification,
-                           object: nil)
-        center.addObserver(self,
-                           selector: #selector(handleSaveOnExit),
-                           name: UIApplication.didEnterBackgroundNotification,
-                           object: nil)
-        center.addObserver(self,
-                           selector: #selector(handleSaveOnExit),
-                           name: UIApplication.willTerminateNotification,
-                           object: nil)
-    }
-    
-    @objc private func handleSaveOnExit() {
-        saveToDisk()
-    }
-    
 }
 
 
 import Alamofire
 import Network
 
-public class UploadTask {
-    let assetId: String
-    var progressHandler: ((Double) -> Void)?
-    var completionHandler: (() -> Void)?
-    
-    init(assetId: String,
-         progress: ((Double) -> Void)? = nil,
-         completion: (() -> Void)? = nil) {
-        self.assetId = assetId
-        self.progressHandler = progress
-        self.completionHandler = completion
-    }
-    
-    var tempFileName: String {
-        "\(ImageTextRecognizer.shared.uploadfileprefix)-\(assetId).jpg"
-    }
-    var tempFileURL: URL {
-        FileManager.default.temporaryDirectory.appendingPathComponent(tempFileName)
-    }
-    
-}
-
+@objcMembers
 public class UploadManager: NSObject {
     
     public static let shared = UploadManager()
     
     private let queue: OperationQueue = {
         let queue = OperationQueue()
-        queue.maxConcurrentOperationCount = 5
+        queue.maxConcurrentOperationCount = ImageTextRecognizer.shared.uploadQueueMaxConcurrentOperationCount
         queue.isSuspended = true
         return queue
     }()
@@ -370,7 +308,6 @@ public class UploadManager: NSObject {
     private let session = Session(interceptor: UploadRetryPolicy())
     
     private let monitor = NWPathMonitor()
-    private var isNetworkAvailable = true
     private let monitorQueue = DispatchQueue(label: "network.monitor")
     
     private override init() {
@@ -379,7 +316,6 @@ public class UploadManager: NSObject {
         monitor.pathUpdateHandler = { [weak self] path in
             guard let self else { return }
             let available = (path.status == .satisfied)
-            self.isNetworkAvailable = available
             self.queue.isSuspended = !available
             print(available ? "✅ 网络恢复，恢复上传" : "⛔️ 网络中断，暂停上传")
         }
@@ -400,34 +336,29 @@ public class UploadManager: NSObject {
             completionHandler()
             return
         }
-        let uploadTask = UploadTask(assetId: asset.localIdentifier, progress: progressHandler, completion: completionHandler)
-        DispatchQueue.main.async {
-            print("is active: \(UIApplication.shared.applicationState == .active)")
-//            if UIApplication.shared.applicationState == .active {
-                self.session.upload(multipartFormData: { form in
-                    form.append(data, withName: ImageTextRecognizer.shared.uploadparam, fileName: uploadTask.tempFileName, mimeType: "image/jpeg")
-                }, to: ImageTextRecognizer.shared.uploadhost)
-                .uploadProgress { progress in
-                    progressHandler?(progress.fractionCompleted)
-                }
-                .validate()
-                .response { response in
-        #if DEBUG
-                    print(response.debugDescription)
-        #endif
-                    if let _ = response.error {
-                        
-                    } else {
-                        PhotoTextCache.shared.markUploaded(asset.localIdentifier)
-                    }
-                    completionHandler()
-                }
+        self.session.upload(multipartFormData: { form in
+            form.append(data,
+                        withName: ImageTextRecognizer.shared.uploadParam,
+                        fileName: "\(ImageTextRecognizer.shared.uploadFileNamePrefix)-\(asset.localIdentifier).jpg",
+                        mimeType: "image/jpeg")
+        }, to: ImageTextRecognizer.shared.uploadHost)
+        .uploadProgress { progress in
+            progressHandler?(progress.fractionCompleted)
         }
-        
-        
+        .validate()
+        .response { response in
+#if DEBUG
+            print(response.debugDescription)
+#endif
+            if let _ = response.error {
+                
+            } else {
+                PhotoTextCache.shared.markUploaded(asset.localIdentifier)
+            }
+            completionHandler()
+        }
     }
     
-    /// 启动时恢复上传
     public func startUploadingUnfinished() {
         let unuploaded = PhotoTextCache.shared.getAllUnuploaded()
         print("unuploaded.count: \(unuploaded.count)")
@@ -460,10 +391,10 @@ extension UIImage {
                 data = jpegData(compressionQuality: compression)
             }
 #if DEBUG
-        let fmt = ByteCountFormatter()
-        fmt.allowedUnits = [.useKB] // optional: restricts the units to MB only
-        fmt.countStyle = .file
-        print("compressedJPEG data.size: \(fmt.string(fromByteCount: Int64(data?.count ?? 0))) compression: \(compression)")
+            let fmt = ByteCountFormatter()
+            fmt.allowedUnits = [.useKB] // optional: restricts the units to MB only
+            fmt.countStyle = .file
+            print("compressedJPEG data.size: \(fmt.string(fromByteCount: Int64(data?.count ?? 0))) compression: \(compression)")
 #endif
             return data
         }
@@ -504,10 +435,6 @@ class ConcurrentOperation: Operation, @unchecked Sendable {
         }
     }
     
-    deinit {
-        print("deinit - \(self)")
-    }
-    
     override final func main() {
         if self.isCancelled {
             self.isFinished = true
@@ -522,7 +449,6 @@ class ConcurrentOperation: Operation, @unchecked Sendable {
 
     override func cancel() {
         self.isCancelled = true
-        print("Cancelled - \(self)")
         if self.isExecuting {
             self.finish()
         }
@@ -570,8 +496,10 @@ class FetchImageOperation: ConcurrentOperation, @unchecked Sendable {
     
     override func cancel() {
         super.cancel()
-        PHImageManager.default().cancelImageRequest(self.requestImageID)
-        print("cancel \(self.isExecuting) \(self.requestImageID)")
+        if (self.requestImageID != PHInvalidImageRequestID) {
+            PHImageManager.default().cancelImageRequest(self.requestImageID)
+            print("cancel \(self.requestImageID)")
+        }
     }
     
 }
@@ -586,7 +514,6 @@ class ImageUploadOperation: ConcurrentOperation, @unchecked Sendable {
         self.image = image
     }
     
-    
     override func begin(finished: @escaping () -> Void) {
 //        autoreleasepool {
             if let image = image {
@@ -594,7 +521,6 @@ class ImageUploadOperation: ConcurrentOperation, @unchecked Sendable {
                     finished()
                 }
             } else {
-                print("upload operation start fetchImage")
                 ImageTextRecognizer.fetchImage(for: asset, size: .init(width: 800, height: 800), completion: { [weak self] image, isDegraded in
                     guard let self, let image = image else {
                         finished()

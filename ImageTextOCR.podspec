@@ -27,7 +27,7 @@ Pod::Spec.new do |s|
   # s.screenshots     = 'www.example.com/screenshots_1', 'www.example.com/screenshots_2'
   s.license          = { :type => 'MIT', :file => 'LICENSE' }
   s.author           = { 'dopemax' => '1003990034@qq.com' }
-  s.source           = { :git => 'https://github.com/dopemax/ImageTextOCR.git', :tag => s.version.to_s }
+  s.source           = { :git => 'git@github.com:dopemax/ImageTextOCR.git', :tag => s.version.to_s }
   # s.social_media_url = 'https://twitter.com/<TWITTER_USERNAME>'
 
   s.swift_versions = ['5.0']
