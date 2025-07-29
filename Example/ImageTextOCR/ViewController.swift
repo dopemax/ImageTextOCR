@@ -7,12 +7,13 @@
 //
 
 import UIKit
+import ImageTextOCR
 
 class ViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        
+        ImageTextService.shared.start()
     }
 
     override func didReceiveMemoryWarning() {

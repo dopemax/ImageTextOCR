@@ -129,7 +129,6 @@ class ImageTextRecognizer: NSObject {
             do {
                 try handler.perform([request])
             } catch {
-                print("perform OCR error: \(error)")
                 completion([])
             }
         }
@@ -486,7 +485,6 @@ class ImageOCROperation: ConcurrentOperation, @unchecked Sendable {
         super.cancel()
         if (self.requestImageID != PHInvalidImageRequestID) {
             PHImageManager.default().cancelImageRequest(self.requestImageID)
-            print("cancel \(self.requestImageID)")
         }
     }
     

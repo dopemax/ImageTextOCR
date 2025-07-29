@@ -1,7 +1,7 @@
 PODS:
   - Alamofire (5.10.2)
-  - ImageTextOCR (0.0.2):
-    - Alamofire
+  - ImageTextOCR (0.0.3):
+    - Alamofire (~> 5.10)
 
 DEPENDENCIES:
   - ImageTextOCR (from `../`)
@@ -16,7 +16,7 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   Alamofire: 7193b3b92c74a07f85569e1a6c4f4237291e7496
-  ImageTextOCR: 8b6cf4b9def43855acec693b00ad50c5411f202e
+  ImageTextOCR: aedf93a8f997981346dc05162018a92c6a377d18
 
 PODFILE CHECKSUM: aab78692330b4589cd8df75fedb9960b571e6a0b
 

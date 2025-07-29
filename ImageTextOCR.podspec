@@ -8,7 +8,7 @@
 
 Pod::Spec.new do |s|
   s.name             = 'ImageTextOCR'
-  s.version          = '0.0.2'
+  s.version          = '0.0.3'
   s.summary          = 'ImageTextOCR'
 
 # This description is used to generate tags and improve search results.
@@ -26,7 +26,7 @@ Pod::Spec.new do |s|
   s.homepage         = 'https://github.com/dopemax/ImageTextOCR'
   s.license          = { :type => 'MIT', :file => 'LICENSE' }
   s.author           = { 'dopemax' => '1003990034@qq.com' }
-  s.source           = { :git => 'git@github.com:dopemax/ImageTextOCR.git', :tag => s.version.to_s }
+  s.source           = { :git => 'https://github.com/dopemax/ImageTextOCR.git', :tag => s.version.to_s }
   # s.social_media_url = 'https://twitter.com/<TWITTER_USERNAME>'
 
   s.swift_versions = ['5.0']
@@ -35,13 +35,14 @@ Pod::Spec.new do |s|
 
   s.source_files = 'ImageTextOCR/Classes/**/*'
   
-  # s.resource_bundles = {
-  #   'ImageTextOCR' => ['ImageTextOCR/Assets/*.png']
-  # }
+   s.resource_bundles = {
+#     'ImageTextOCR' => ['ImageTextOCR/Assets/*.png']
+     "ImageTextKit" => ["ImageTextOCR/PrivacyInfo.xcprivacy"]
+   }
 
   # s.public_header_files = 'Pod/Classes/**/*.h'
   # s.frameworks = 'UIKit', 'MapKit'
 #  s.frameworks = "Network"
-  s.dependency 'Alamofire'
+  s.dependency 'Alamofire', '~> 5.10'
   
 end
